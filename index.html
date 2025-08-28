@@ -158,8 +158,8 @@
                         <select id="historyRangeSelect" style="max-width: 160px;">
                             <option value="120">120 天</option>
                             <option value="240">240 天</option>
-                            <option value="365">365 天</option>
-                            <option value="720" selected>720 天</option>
+                            <option value="365" selected>365 天</option>
+                            <option value="720">720 天</option>
                         </select>
                         <small style="color: var(--muted-color);">較長範圍可能會較慢</small>
                     </div>
@@ -733,8 +733,8 @@
     // ==============================================================================
     // 歷史圖表功能
     // ==============================================================================
-    const HISTORY_DEFAULT_DAYS = 720; // initial range ~2 years
-    const HISTORY_FALLBACKS = [365, 240, 120];
+    const HISTORY_DEFAULT_DAYS = 365; // default to ~1 year for reliability
+    const HISTORY_FALLBACKS = [240, 120];
 
     async function loadAndRenderHistoryChartWithSignals(stockCode) {
         console.log(`📈 開始載入 ${stockCode} 的歷史圖表（含信號）`);
