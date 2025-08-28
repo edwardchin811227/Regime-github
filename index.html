@@ -79,6 +79,7 @@
         .score-change { font-weight: bold; font-size: 1.1rem; }
         .score-up { color: #16a34a; }
         .score-down { color: #ef4444; }
+        .load-more-btn { margin: 1rem auto; display: block; }
         
         @keyframes spin { 
             0% { transform: rotate(0deg); } 
@@ -973,35 +974,40 @@
         }
     }
 
+    const SCANNER_PAGE_SIZE = 50;
+    let scannerData = [];
+    let scannerRendered = 0;
+    let scannerRuleName = '';
+
     function displayScannerResults(response) {
         if (!response.success) {
             showError('scannerResults', `掃描失敗: ${response.error}`);
             return;
         }
-        
+
         const { ruleName, resultsCount, totalScanned, executionTime, data } = response;
-        
+
         const summaryDiv = document.getElementById('scannerSummary');
         const statsSpan = document.getElementById('scannerStats');
-        
+
         if (resultsCount > 0) {
             statsSpan.innerHTML = `
-                <strong>✅ 掃描完成！</strong> 
-                在 ${totalScanned} 支股票中找到 <strong style="color: var(--primary-color); font-size: 1.3rem;">${resultsCount}</strong> 個「${ruleName}」信號 
+                <strong>✅ 掃描完成！</strong>
+                在 ${totalScanned} 支股票中找到 <strong style="color: var(--primary-color); font-size: 1.3rem;">${resultsCount}</strong> 個「${ruleName}」信號
                 (耗時: ${executionTime})
             `;
             summaryDiv.classList.remove('hidden');
         } else {
             statsSpan.innerHTML = `
-                <strong>ℹ️ 掃描完成</strong> 
-                在 ${totalScanned} 支股票中沒有找到符合「${ruleName}」的信號 
+                <strong>ℹ️ 掃描完成</strong>
+                在 ${totalScanned} 支股票中沒有找到符合「${ruleName}」的信號
                 (耗時: ${executionTime})
             `;
             summaryDiv.classList.remove('hidden');
         }
-        
+
         const resultsDiv = document.getElementById('scannerResults');
-        
+
         if (data.length === 0) {
             resultsDiv.innerHTML = `
                 <div class="scanner-placeholder">
@@ -1011,8 +1017,12 @@
             `;
             return;
         }
-        
-        let tableHtml = `
+
+        scannerData = data;
+        scannerRendered = 0;
+        scannerRuleName = ruleName;
+
+        resultsDiv.innerHTML = `
             <table class="scanner-table">
                 <thead>
                     <tr>
@@ -1024,17 +1034,31 @@
                         <th>操作</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="scannerResultsBody"></tbody>
+            </table>
+            ${data.length > SCANNER_PAGE_SIZE ? '<button id="loadMoreScanner" class="load-more-btn">載入更多</button>' : ''}
         `;
-        
-        data.forEach(stock => {
+
+        renderNextScannerResults();
+
+        const loadMoreBtn = document.getElementById('loadMoreScanner');
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', renderNextScannerResults);
+        }
+    }
+
+    function renderNextScannerResults() {
+        const tbody = document.getElementById('scannerResultsBody');
+        const slice = scannerData.slice(scannerRendered, scannerRendered + SCANNER_PAGE_SIZE);
+
+        slice.forEach(stock => {
             const scoreChange = stock.todayScore - stock.yesterdayScore;
             const changeClass = scoreChange > 0 ? 'score-up' : 'score-down';
             const changeSymbol = scoreChange > 0 ? '↑' : '↓';
-            const signalClass = ['制度突破', '動能點火', '平靜啟航', '底背離'].includes(ruleName) ? 
+            const signalClass = ['制度突破', '動能點火', '平靜啟航', '底背離'].includes(scannerRuleName) ?
                                'signal-bullish' : 'signal-bearish';
-            
-            tableHtml += `
+
+            const rowHtml = `
                 <tr onclick="viewStockFromScanner('${stock.stockCode}')" title="點擊查看詳細分析">
                     <td><strong>${stock.stockCode}</strong></td>
                     <td>
@@ -1054,21 +1078,25 @@
                     </td>
                     <td>
                         <span class="signal-badge ${signalClass}">
-                            ${ruleName}
+                            ${scannerRuleName}
                         </span>
                     </td>
                     <td>
-                        <button onclick="event.stopPropagation(); analyzeScannerStock('${stock.stockCode}')" 
+                        <button onclick="event.stopPropagation(); analyzeScannerStock('${stock.stockCode}')"
                                 style="padding: 0.3rem 0.8rem; font-size: 0.9rem;">
                             📊 分析
                         </button>
                     </td>
                 </tr>
             `;
+            tbody.insertAdjacentHTML('beforeend', rowHtml);
         });
-        
-        tableHtml += '</tbody></table>';
-        resultsDiv.innerHTML = tableHtml;
+
+        scannerRendered += slice.length;
+        if (scannerRendered >= scannerData.length) {
+            const loadMoreBtn = document.getElementById('loadMoreScanner');
+            if (loadMoreBtn) loadMoreBtn.classList.add('hidden');
+        }
     }
 
     function viewStockFromScanner(stockCode) {
