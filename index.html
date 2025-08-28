@@ -754,7 +754,7 @@
         try {
             // Try initial request; on "parameter too large" fallback to shorter ranges
             let response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: selectedRange });
-            if (!response.success && /參數太大|parameter too large/i.test(response.error || '')) {
+            if (!response.success && /參數太大|引數過大|以下引數過大|parameter too large|argument too large/i.test(response.error || '')) {
                 for (const d of HISTORY_FALLBACKS) {
                     console.warn(`History too large, retrying with rangeDays=${d}`);
                     response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: d, noCache: '1' });
@@ -762,7 +762,7 @@
                 }
             }
             // If still failing due to Apps Script size limits, fall back to non-signal endpoint
-            if (!response.success && /參數太大|parameter too large/i.test(response.error || '')) {
+            if (!response.success && /參數太大|引數過大|以下引數過大|parameter too large|argument too large/i.test(response.error || '')) {
                 console.warn('Falling back to non-signal history endpoint due to parameter-too-large');
                 response = await ApiService.call('getHistoricalRegimeScores', { stockCode, rangeDays: selectedRange, noCache: '1' });
                 if (!response.success) {
