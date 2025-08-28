@@ -245,7 +245,8 @@
     // API 服務層
     // ==============================================================================
     class ApiService {
-        static async call(action, params = {}) {
+        // Generic GET with optional options: { timeout, retryAttempts, retryDelay, signal }
+        static async call(action, params = {}, options = {}) {
             const url = new URL(API_CONFIG.baseUrl);
             url.searchParams.append('mode', 'api');
             url.searchParams.append('action', action);
@@ -256,10 +257,20 @@
                 }
             });
 
-            for (let attempt = 1; attempt <= API_CONFIG.retryAttempts; attempt++) {
+            const attemptLimit = options.retryAttempts ?? API_CONFIG.retryAttempts;
+            const retryDelay = options.retryDelay ?? API_CONFIG.retryDelay;
+            const externalSignal = options.signal;
+
+            for (let attempt = 1; attempt <= attemptLimit; attempt++) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeout);
+                    const timeoutMs = options.timeout ?? API_CONFIG.timeout;
+                    const timeoutId = setTimeout(() => controller.abort('timeout'), timeoutMs);
+                    // If caller passed a signal, abort our controller when theirs aborts
+                    if (externalSignal) {
+                        if (externalSignal.aborted) controller.abort(externalSignal.reason);
+                        else externalSignal.addEventListener('abort', () => controller.abort(externalSignal.reason), { once: true });
+                    }
                     
                     const response = await fetch(url.toString(), {
                         method: 'GET',
@@ -278,22 +289,31 @@
                     return data;
                     
                 } catch (error) {
-                    console.error(`API call attempt ${attempt} failed:`, error);
-                    
-                    if (attempt === API_CONFIG.retryAttempts) {
-                        throw error;
+                    // Improve error message for aborted/timeout requests
+                    if (error?.name === 'AbortError' || error?.message?.toLowerCase().includes('aborted')) {
+                        const friendly = new Error(`請求逾時或被取消：${action}。伺服器可能仍在處理，請稍後再試或縮小範圍。`);
+                        if (attempt === attemptLimit) throw friendly;
+                    } else {
+                        console.error(`API call attempt ${attempt} failed:`, error);
+                        if (attempt === attemptLimit) throw error;
                     }
-                    
-                    await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * attempt));
+                    await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
                 }
             }
         }
 
-        static async post(action, data = {}) {
+        static async post(action, data = {}, options = {}) {
             const url = new URL(API_CONFIG.baseUrl);
             
-            for (let attempt = 1; attempt <= API_CONFIG.retryAttempts; attempt++) {
+            const attemptLimit = options.retryAttempts ?? API_CONFIG.retryAttempts;
+            const retryDelay = options.retryDelay ?? API_CONFIG.retryDelay;
+
+            for (let attempt = 1; attempt <= attemptLimit; attempt++) {
                 try {
+                    const controller = new AbortController();
+                    const timeoutMs = options.timeout ?? API_CONFIG.timeout;
+                    const timeoutId = setTimeout(() => controller.abort('timeout'), timeoutMs);
+
                     const response = await fetch(url.toString(), {
                         method: 'POST',
                         mode: 'cors',
@@ -301,8 +321,10 @@
                         headers: {
                             'Content-Type': 'application/json',
                         },
+                        signal: controller.signal,
                         body: JSON.stringify({ action, ...data })
                     });
+                    clearTimeout(timeoutId);
                     
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -311,10 +333,13 @@
                     return await response.json();
                     
                 } catch (error) {
-                    if (attempt === API_CONFIG.retryAttempts) {
-                        throw error;
+                    if (error?.name === 'AbortError' || error?.message?.toLowerCase().includes('aborted')) {
+                        const friendly = new Error(`請求逾時或被取消：${action}。請稍後重試。`);
+                        if (attempt === attemptLimit) throw friendly;
+                    } else {
+                        if (attempt === attemptLimit) throw error;
                     }
-                    await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * attempt));
+                    await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
                 }
             }
         }
@@ -963,14 +988,20 @@
         document.getElementById('scannerSummary').classList.add('hidden');
         
         try {
-            const response = await ApiService.call('runScanner', { ruleName });
+            // 掃描可能較久：放寬逾時至 120 秒並避免多次重試
+            const response = await ApiService.call('runScanner', { ruleName }, { timeout: 120000, retryAttempts: 1 });
             button.disabled = false;
             button.innerHTML = '🔍 開始掃描';
             displayScannerResults(response);
         } catch (error) {
             button.disabled = false;
             button.innerHTML = '🔍 開始掃描';
-            showError('scannerResults', `掃描失敗: ${error.message}`);
+            // 針對逾時/取消提供更清晰提示
+            const msg = `${error.message || error}`;
+            const hint = msg.includes('逾時') || msg.toLowerCase().includes('timeout')
+              ? '（伺服器處理時間較長，建議稍後重試或更換規則）'
+              : '';
+            showError('scannerResults', `掃描失敗: ${msg} ${hint}`);
         }
     }
 
