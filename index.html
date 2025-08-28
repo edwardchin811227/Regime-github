@@ -721,6 +721,9 @@
     // ==============================================================================
     // 歷史圖表功能
     // ==============================================================================
+    const HISTORY_DEFAULT_DAYS = 720; // initial range ~2 years
+    const HISTORY_FALLBACKS = [365, 240, 120];
+
     async function loadAndRenderHistoryChartWithSignals(stockCode) {
         console.log(`📈 開始載入 ${stockCode} 的歷史圖表（含信號）`);
         
@@ -735,7 +738,15 @@
             </div>`;
 
         try {
-            const response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode });
+            // Try initial request; on "parameter too large" fallback to shorter ranges
+            let response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: HISTORY_DEFAULT_DAYS });
+            if (!response.success && /參數太大|parameter too large/i.test(response.error || '')) {
+                for (const d of HISTORY_FALLBACKS) {
+                    console.warn(`History too large, retrying with rangeDays=${d}`);
+                    response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: d, noCache: '1' });
+                    if (response.success) break;
+                }
+            }
             console.log("歷史數據響應:", response);
             
             if (response.success) {
@@ -750,7 +761,21 @@
         }
     }
 
+    function thinHistoryData(data, maxPoints = 1200) {
+        if (!Array.isArray(data)) return data;
+        const n = data.length;
+        if (n <= maxPoints) return data;
+        const stride = Math.ceil(n / maxPoints);
+        const out = [];
+        for (let i = 0; i < n; i += stride) out.push(data[i]);
+        // ensure last point present
+        if (out[out.length - 1] !== data[n - 1]) out.push(data[n - 1]);
+        return out;
+    }
+
     function drawChartWithSignals(data, stockCode) {
+        // guard against overly large data tables in Google Charts
+        const thinned = thinHistoryData(data, 1500);
         google.charts.load('current', {'packages':['corechart']});
         google.charts.setOnLoadCallback(() => {
             const dataTable = new google.visualization.DataTable();
@@ -761,7 +786,7 @@
             dataTable.addColumn({type: 'string', role: 'annotation'});
             dataTable.addColumn({type: 'string', role: 'annotationText'});
             
-            const rows = data.map((item, index) => {
+            const rows = thinned.map((item, index) => {
                 const score = item.score;
                 let annotation = null;
                 let annotationText = null;
@@ -792,7 +817,11 @@
                 ];
             });
             
-            dataTable.addRows(rows);
+            // Add rows in chunks to avoid "parameter too large" inside Charts
+            const CHUNK = 500;
+            for (let i = 0; i < rows.length; i += CHUNK) {
+                dataTable.addRows(rows.slice(i, i + CHUNK));
+            }
             
             const options = {
                 title: `${stockCode} 股價 vs D-Regime 分數`,
