@@ -1,1 +1,1288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-Regime Market Analysis V2.8</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/picocss/1.5.10/pico.min.css">
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        /* V2.8 + Phase 3 優化樣式 */
+        body { padding-bottom: 3rem; }
+        .dashboard-container { padding: 1rem 0; }
+        .market-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1rem 0; }
+        .summary-card { background: var(--card-background-color); border: 1px solid var(--card-border-color); border-radius: 0.5rem; padding: 1rem; text-align: center; transition: transform 0.2s; }
+        .summary-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .summary-number { font-size: 1.8rem; font-weight: bold; margin: 0.5rem 0; }
+        .summary-label { color: var(--muted-color); font-size: 0.9rem; }
+        .dashboard-table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        .dashboard-table th { background: var(--secondary-background); padding: 0.8rem; text-align: left; border-bottom: 2px solid var(--border-color); cursor: pointer; position: relative; transition: background 0.2s; }
+        .dashboard-table th:hover { background: var(--muted-color); }
+        .dashboard-table th.sortable::after { content: ' ⇅'; color: var(--muted-color); }
+        .dashboard-table th.sort-asc::after { content: ' ↑'; color: var(--primary-color); }
+        .dashboard-table th.sort-desc::after { content: ' ↓'; color: var(--primary-color); }
+        .dashboard-table td { padding: 0.8rem; border-bottom: 1px solid var(--border-color); }
+        .dashboard-table tbody tr:hover { background: var(--secondary-background); cursor: pointer; }
+        .score-cell { font-weight: bold; text-align: center; padding: 0.4rem 0.8rem; border-radius: 0.3rem; color: white; min-width: 60px; }
+        .score-strong-bullish { background-color: #16a34a; }
+        .score-moderate-bullish { background-color: #22c55e; }
+        .score-neutral { background-color: #6b7280; }
+        .score-moderate-bearish { background-color: #f97316; }
+        .score-strong-bearish { background-color: #ef4444; }
+        .loading-overlay { position: relative; min-height: 200px; text-align: center; padding-top: 2rem; }
+        .loading-spinner-large { border: 6px solid #f3f3f3; border-top: 6px solid #3498db; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin: 2rem auto; }
+        .filter-controls { display: flex; gap: 1rem; align-items: center; margin: 1rem 0; flex-wrap: wrap; }
+        .refresh-info { display: flex; justify-content: space-between; align-items: center; margin: 1rem 0; padding: 0.5rem; background: var(--secondary-background); border-radius: 0.3rem; font-size: 0.9rem; color: var(--muted-color); }
+        .stock-detail-panel { background: var(--card-background-color); border: 1px solid var(--card-border-color); border-radius: 0.5rem; padding: 1.5rem; margin: 1rem 0; }
+        .hidden { display: none; }
+        .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+        .error-message { color: var(--pico-color-red-500); background-color: var(--pico-card-background-color); border: 1px solid var(--pico-color-red-500); padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; }
+        .success-message { color: var(--pico-color-green-500); background-color: #f0f9ff; border: 1px solid var(--pico-color-green-500); padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; }
+        
+        /* V2.8 新增樣式 */
+        .stock-select-container { position: relative; margin-bottom: 1rem; }
+        .stock-select-grid { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end; margin-bottom: 1rem; }
+        .config-table-container { background: var(--card-background-color); border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; }
+        .config-category-title { font-size: 1.1rem; font-weight: bold; color: var(--primary-color); margin: 1rem 0 0.5rem 0; border-bottom: 2px solid var(--primary-color); padding-bottom: 0.5rem; }
+        .config-table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1.5rem 0; background: white; border-radius: 0.3rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .config-table th { background: var(--secondary-background); padding: 0.7rem; text-align: left; font-weight: 600; border-bottom: 1px solid var(--border-color); }
+        .config-table td { padding: 0.7rem; border-bottom: 1px solid #f1f5f9; }
+        .config-table tbody tr:nth-child(even) { background: #f8fafc; }
+        .config-table tbody tr:hover { background: #e2e8f0; }
+        .config-value { font-family: 'Courier New', monospace; color: var(--primary-color); font-weight: 600; }
+        .config-description { color: var(--muted-color); font-size: 0.9rem; }
+        .system-info { text-align: center; padding: 1rem; background: var(--secondary-background); border-radius: 0.3rem; margin-top: 2rem; }
+        
+        /* Phase 2: 圖表容器樣式 */
+        .chart-container { background: var(--card-background-color); border: 1px solid var(--card-border-color); border-radius: 0.5rem; padding: 1rem; margin-top: 2rem; }
+        .chart-title { color: var(--primary-color); margin-bottom: 1rem; }
+        
+        /* Phase 3: 策略掃描儀樣式 */
+        .scanner-controls { display: flex; gap: 1rem; align-items: flex-end; margin: 1.5rem 0; padding: 1.5rem; background: var(--card-background-color); border: 1px solid var(--card-border-color); border-radius: 0.5rem; }
+        .scanner-input-group { flex: 1; }
+        .scanner-input-group label { display: block; margin-bottom: 0.5rem; color: var(--primary-color); }
+        #scannerRuleSelect { width: 100%; padding: 0.5rem; font-size: 1rem; }
+        #executeScanButton { padding: 0.75rem 2rem; font-size: 1.1rem; font-weight: bold; background: var(--primary-color); color: white; border: none; border-radius: 0.3rem; cursor: pointer; transition: all 0.2s; }
+        #executeScanButton:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3); }
+        #executeScanButton:disabled { opacity: 0.6; cursor: not-allowed; }
+        .scanner-summary { margin: 1rem 0; padding: 1rem; background: #f0f8ff; border-left: 4px solid var(--primary-color); border-radius: 0.3rem; }
+        .summary-stats { font-size: 1.1rem; }
+        .scanner-results { margin-top: 2rem; }
+        .scanner-placeholder { text-align: center; padding: 3rem; color: var(--muted-color); background: var(--secondary-background); border-radius: 0.5rem; }
+        .scanner-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        .scanner-table th { background: var(--primary-color); color: white; padding: 0.8rem; text-align: left; position: sticky; top: 0; }
+        .scanner-table td { padding: 0.8rem; border-bottom: 1px solid var(--border-color); }
+        .scanner-table tbody tr:hover { background: var(--secondary-background); cursor: pointer; }
+        .signal-badge { display: inline-block; padding: 0.3rem 0.8rem; border-radius: 0.3rem; font-weight: bold; font-size: 0.9rem; }
+        .signal-bullish { background: #d4f4dd; color: #16a34a; border: 1px solid #16a34a; }
+        .signal-bearish { background: #fee2e2; color: #ef4444; border: 1px solid #ef4444; }
+        .score-change { font-weight: bold; font-size: 1.1rem; }
+        .score-up { color: #16a34a; }
+        .score-down { color: #ef4444; }
+        
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>D-Regime Market Analysis V2.8</h1>
+            <p>基於波動率、趨勢和動能的市場制度分析平台</p>
+            <small id="apiUrl" style="color: var(--muted-color);"></small>
+        </header>
 
+        <section id="systemStatus">
+            <div id="statusDisplay"></div>
+        </section>
+
+        <nav>
+            <ul role="tablist">
+                <li><a href="#" role="tab" class="tab-button active" data-tab="dashboard">📊 市場總覽</a></li>
+                <li><a href="#" role="tab" class="tab-button" data-tab="single">🔍 單股分析</a></li>
+                <li><a href="#" role="tab" class="tab-button" data-tab="batch">📋 批量分析</a></li>
+                <li><a href="#" role="tab" class="tab-button" data-tab="config">⚙️ 系統配置</a></li>
+                <li><a href="#" role="tab" class="tab-button" data-tab="scanner">📈 策略掃描儀</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            <div id="dashboardPanel" class="tab-panel dashboard-container">
+                <section id="marketSummary">
+                    <h3>市場概況</h3>
+                    <div class="market-summary" id="summaryCards">
+                        <div class="loading-overlay"><div class="loading-spinner-large"></div><p>正在加載市場概況...</p></div>
+                    </div>
+                </section>
+                <section class="filter-controls">
+                    <button id="refreshDashboard" onclick="loadDashboard(false)">🔄 刷新數據</button>
+                    <button onclick="forceClearCache()">🗑️ 清除緩存</button>
+                    <select id="scoreFilter" onchange="applyFilterAndRender()">
+                        <option value="all">所有股票</option>
+                        <option value="bullish">看漲股票 (≥1分)</option>
+                        <option value="bearish">看跌股票 (≤-1分)</option>
+                        <option value="extreme">極端股票 (≥3或≤-3)</option>
+                    </select>
+                </section>
+                <div id="refreshInfo" class="refresh-info hidden"></div>
+                <section id="dashboardTable">
+                    <h3>股票分析總覽</h3>
+                    <div id="tableContainer">
+                        <div class="loading-overlay"><div class="loading-spinner-large"></div><p>正在分析所有股票，請稍候...</p></div>
+                    </div>
+                </section>
+                <section id="stockDetailSection" class="hidden">
+                    <div id="stockDetail" class="stock-detail-panel"></div>
+                </section>
+            </div>
+
+            <div id="singlePanel" class="tab-panel hidden">
+                <h3>單股D-Regime分析</h3>
+                <div class="stock-select-grid">
+                    <div>
+                        <label for="stockCodeSelect"><strong>選擇股票代碼：</strong></label>
+                        <select id="stockCodeSelect" onchange="onStockSelectChange()">
+                            <option value="">請選擇股票代碼...</option>
+                        </select>
+                    </div>
+                    <button id="analyzeButton" onclick="analyzeSingleStock()">🔍 開始分析</button>
+                </div>
+                <div id="singleResult"></div>
+                <div id="chartContainer" class="hidden chart-container">
+                    <h3 class="chart-title">歷史回測圖表</h3>
+                    <div id="historyChart" style="width: 100%; height: 500px; border: 1px solid var(--border-color); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                        <div class="loading-overlay">
+                            <div class="loading-spinner-large"></div>
+                            <p>正在生成完整歷史圖表...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="batchPanel" class="tab-panel hidden">
+                <h3>批量D-Regime分析</h3>
+                <p>每行輸入一個股票代碼：</p>
+                <textarea id="batchStockCodes" rows="6" placeholder="HK.00700&#10;HK.09988&#10;HK.00941"></textarea>
+                <button id="batchAnalyzeButton" onclick="analyzeBatchStocks()">📋 批量分析</button>
+                <div id="batchResult"></div>
+            </div>
+
+            <div id="configPanel" class="tab-panel hidden">
+                <h3>系統配置參數</h3>
+                <div id="configDisplay">
+                    <div class="loading-overlay">
+                        <div class="loading-spinner-large"></div>
+                        <p>正在加載系統配置...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="scannerPanel" class="tab-panel hidden">
+                <h3>📈 策略掃描儀 - 即時信號偵測</h3>
+                <p>使用預定義的交易信號規則，掃描今日符合條件的股票。</p>
+                
+                <div class="scanner-controls">
+                    <div class="scanner-input-group">
+                        <label for="scannerRuleSelect"><strong>選擇掃描規則：</strong></label>
+                        <select id="scannerRuleSelect">
+                            <optgroup label="看漲信號">
+                                <option value="制度突破">🚀 制度突破 - 進入強勢區 (總分≥2)</option>
+                                <option value="動能點火">🔥 動能點火 - 上升趨勢加速</option>
+                                <option value="平靜啟航">🌊 平靜啟航 - 低波動轉強</option>
+                                <option value="底背離">📈 底背離 - 下跌中動能反轉</option>
+                            </optgroup>
+                            <optgroup label="看跌信號">
+                                <option value="制度崩壞">⚠️ 制度崩壞 - 進入弱勢區 (總分≤-2)</option>
+                                <option value="恐慌加劇">😱 恐慌加劇 - 高波動趨勢轉弱</option>
+                                <option value="頂背離">📉 頂背離 - 上漲中動能衰退</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button id="executeScanButton" onclick="executeScan()">
+                        🔍 開始掃描
+                    </button>
+                </div>
+                
+                <div id="scannerSummary" class="scanner-summary hidden">
+                    <div class="summary-stats">
+                        <span id="scannerStats"></span>
+                    </div>
+                </div>
+                
+                <div id="scannerResults" class="scanner-results">
+                    <div class="scanner-placeholder">
+                        <p>👆 請選擇掃描規則並點擊「開始掃描」以查看符合條件的股票</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>D-Regime Analysis Platform V2.8 | 數據更新時間: <span id="lastUpdate">--</span></p>
+        </footer>
+    </div>
+
+    <script>
+    // ==============================================================================
+    // D-REGIME V2.8 GitHub Pages 版本 - 完整前端代碼
+    // ==============================================================================
+    
+    // API 配置 - 請替換為你的 Google Apps Script URL
+    const API_CONFIG = {
+        baseUrl: 'https://script.google.com/macros/s/AKfycbx2qTIeeR3LHVRUoENrXVT5nfbpxLSMNIR9lzB9Ek8gDRLWE_wvB3zbdVH81YOpthnh/exec', // 
+        timeout: 30000,
+        retryAttempts: 3,
+        retryDelay: 1000
+    };
+
+    // 顯示 API URL（僅供調試）
+    document.getElementById('apiUrl').textContent = `API: ${API_CONFIG.baseUrl.substring(0, 50)}...`;
+
+    // ==============================================================================
+    // API 服務層
+    // ==============================================================================
+    class ApiService {
+        static async call(action, params = {}) {
+            const url = new URL(API_CONFIG.baseUrl);
+            url.searchParams.append('mode', 'api');
+            url.searchParams.append('action', action);
+            
+            Object.keys(params).forEach(key => {
+                if (params[key] !== undefined && params[key] !== null) {
+                    url.searchParams.append(key, params[key]);
+                }
+            });
+
+            for (let attempt = 1; attempt <= API_CONFIG.retryAttempts; attempt++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeout);
+                    
+                    const response = await fetch(url.toString(), {
+                        method: 'GET',
+                        signal: controller.signal,
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    return data;
+                    
+                } catch (error) {
+                    console.error(`API call attempt ${attempt} failed:`, error);
+                    
+                    if (attempt === API_CONFIG.retryAttempts) {
+                        throw error;
+                    }
+                    
+                    await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * attempt));
+                }
+            }
+        }
+
+        static async post(action, data = {}) {
+            const url = new URL(API_CONFIG.baseUrl);
+            
+            for (let attempt = 1; attempt <= API_CONFIG.retryAttempts; attempt++) {
+                try {
+                    const response = await fetch(url.toString(), {
+                        method: 'POST',
+                        mode: 'cors',
+                        cache: 'no-cache',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ action, ...data })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    return await response.json();
+                    
+                } catch (error) {
+                    if (attempt === API_CONFIG.retryAttempts) {
+                        throw error;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * attempt));
+                }
+            }
+        }
+    }
+
+    // ==============================================================================
+    // 本地緩存層
+    // ==============================================================================
+    class LocalCache {
+        static set(key, value, ttl = 3600000) {
+            try {
+                const item = {
+                    value: value,
+                    expiry: new Date().getTime() + ttl
+                };
+                localStorage.setItem(key, JSON.stringify(item));
+            } catch (e) {
+                console.warn('LocalStorage error:', e);
+            }
+        }
+        
+        static get(key) {
+            try {
+                const itemStr = localStorage.getItem(key);
+                if (!itemStr) return null;
+                
+                const item = JSON.parse(itemStr);
+                if (new Date().getTime() > item.expiry) {
+                    localStorage.removeItem(key);
+                    return null;
+                }
+                return item.value;
+            } catch (e) {
+                console.warn('LocalStorage error:', e);
+                return null;
+            }
+        }
+        
+        static clear() {
+            try {
+                const keys = Object.keys(localStorage);
+                keys.forEach(key => {
+                    if (key.startsWith('d_regime_')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+            } catch (e) {
+                console.warn('LocalStorage clear error:', e);
+            }
+        }
+    }
+
+    // ==============================================================================
+    // 全局變量
+    // ==============================================================================
+    let dashboardData = [], filteredData = [], currentSortColumn = 'totalScore', currentSortDirection = 'desc';
+    let availableStocks = [];
+
+    // ==============================================================================
+    // 初始化
+    // ==============================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log('🚀 D-Regime V2.8 GitHub Pages 版本初始化');
+        setupTabs();
+        await testConnection();
+        await loadAvailableStocks();
+        await loadSystemConfig();
+        setTimeout(() => loadDashboard(true), 500);
+    });
+
+    // ==============================================================================
+    // 連接測試
+    // ==============================================================================
+    async function testConnection() {
+        try {
+            const response = await ApiService.call('getHello');
+            if (response.success || response.message) {
+                document.getElementById('statusDisplay').innerHTML = `
+                    <div class="success-message">
+                        <strong>🟢 系統狀態：</strong>後端連接成功
+                    </div>
+                `;
+                console.log('✅ 後端連接成功');
+            }
+        } catch (error) {
+            document.getElementById('statusDisplay').innerHTML = `
+                <div class="error-message">
+                    <strong>🔴 系統狀態：</strong>無法連接到後端服務 - ${error.message}
+                </div>
+            `;
+            console.error('❌ 後端連接失敗:', error);
+        }
+    }
+
+    // ==============================================================================
+    // 儀表板功能
+    // ==============================================================================
+    async function loadDashboard(useCache = true) {
+        setDashboardLoading(true);
+        console.log(`📊 加載儀表板數據 (緩存: ${useCache})`);
+        
+        // 檢查本地緩存
+        if (useCache) {
+            const cached = LocalCache.get('d_regime_dashboard');
+            if (cached) {
+                console.log('✅ 使用本地緩存數據');
+                handleDashboardData(cached);
+                setDashboardLoading(false);
+                return;
+            }
+        }
+        
+        try {
+            const response = await ApiService.call('getDashboardData', { useCache: useCache.toString() });
+            setDashboardLoading(false);
+            
+            // 保存到本地緩存
+            if (response.success) {
+                LocalCache.set('d_regime_dashboard', response, 600000); // 10分鐘
+            }
+            
+            handleDashboardData(response);
+        } catch (error) {
+            setDashboardLoading(false);
+            showError('tableContainer', `儀表板加載失敗: ${error.message}`);
+            console.error('Dashboard loading error:', error);
+        }
+    }
+
+    function handleDashboardData(response) {
+        if (!response.success) {
+            showError('tableContainer', `獲取數據失敗: ${response.error}`);
+            return;
+        }
+        
+        console.log(`✅ 成功加載 ${response.data.length} 支股票數據`);
+        dashboardData = response.data;
+        updateRefreshInfo(response);
+        applyFilterAndRender();
+        loadMarketSummary();
+    }
+
+    async function loadMarketSummary() {
+        try {
+            const response = await ApiService.call('getEnhancedMarketSummary');
+            if (response.success) {
+                renderMarketSummary(response.data);
+            }
+        } catch (error) {
+            console.error('Market summary loading error:', error);
+        }
+    }
+
+    function renderMarketSummary(summary) {
+        const avgScore = parseFloat(summary.averageScore);
+        const marketCondition = summary.marketCondition;
+        const dist = summary.distribution;
+        
+        document.getElementById('summaryCards').innerHTML = `
+            <div class="summary-card">
+                <div class="summary-number">${summary.totalStocks}</div>
+                <div class="summary-label">總股票數</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number" style="color: ${getScoreColor(avgScore)}">${summary.averageScore}</div>
+                <div class="summary-label">平均分數 (${marketCondition})</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number" style="color: #16a34a">${dist.strongBullish}</div>
+                <div class="summary-label">強看漲 (≥3分)</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number" style="color: #22c55e">${dist.bullish}</div>
+                <div class="summary-label">看漲 (2分)</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number" style="color: #6b7280">${dist.neutral}</div>
+                <div class="summary-label">中性 (-1~1分)</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number" style="color: #f97316">${dist.bearish}</div>
+                <div class="summary-label">看跌 (-2分)</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number" style="color: #ef4444">${dist.strongBearish}</div>
+                <div class="summary-label">強看跌 (≤-3分)</div>
+            </div>`;
+    }
+
+    function renderDashboardTable() {
+        const container = document.getElementById('tableContainer');
+        if (!filteredData || filteredData.length === 0) {
+            container.innerHTML = '<div class="error-message">沒有符合篩選條件的股票數據。</div>';
+            return;
+        }
+        
+        sortData();
+        let tableHtml = `
+            <table class="dashboard-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-column="stockCode">股票代碼</th>
+                        <th class="sortable" data-column="totalScore">D-Regime分數</th>
+                        <th class="sortable" data-column="breakdown.volatility">波動率</th>
+                        <th class="sortable" data-column="breakdown.trend">趨勢</th>
+                        <th class="sortable" data-column="breakdown.momentum">動能</th>
+                        <th>解釋</th>
+                        <th class="sortable" data-column="timestamp">分析時間</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        
+        filteredData.forEach(stock => {
+            const analysisTime = new Date(stock.timestamp).toLocaleString('zh-CN', {
+                month: '2-digit', day: '2-digit', 
+                hour: '2-digit', minute: '2-digit'
+            });
+            
+            tableHtml += `
+                <tr onclick="showStockDetail('${stock.stockCode}')" title="點擊查看詳細分析">
+                    <td><strong>${stock.stockCode}</strong></td>
+                    <td><div class="score-cell ${getScoreClass(stock.totalScore)}">${stock.totalScore}</div></td>
+                    <td style="text-align: center; color: ${getScoreColor(stock.breakdown.volatility)}">${stock.breakdown.volatility}</td>
+                    <td style="text-align: center; color: ${getScoreColor(stock.breakdown.trend)}">${stock.breakdown.trend}</td>
+                    <td style="text-align: center; color: ${getScoreColor(stock.breakdown.momentum)}">${stock.breakdown.momentum}</td>
+                    <td><small>${stock.interpretation}</small></td> 
+                    <td><small>${analysisTime}</small></td>
+                </tr>`;
+        });
+        
+        container.innerHTML = tableHtml + '</tbody></table>';
+        updateSortIndicators();
+        setupTableSorting();
+        
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+    }
+
+    // ==============================================================================
+    // 單股分析功能
+    // ==============================================================================
+    async function loadAvailableStocks() {
+        console.log('📝 加載可用股票列表...');
+        
+        // 檢查緩存
+        const cached = LocalCache.get('d_regime_stocks');
+        if (cached) {
+            console.log('✅ 使用緩存的股票列表');
+            availableStocks = cached;
+            populateStockSelect(cached);
+            return;
+        }
+        
+        try {
+            const response = await ApiService.call('getAvailableStocks');
+            if (response.success) {
+                availableStocks = response.data;
+                populateStockSelect(response.data);
+                LocalCache.set('d_regime_stocks', response.data, 3600000); // 1小時緩存
+                console.log(`✅ 成功加載 ${response.count} 支股票`);
+            } else {
+                showError('singleResult', `加載股票列表失敗: ${response.error}`);
+            }
+        } catch (error) {
+            showError('singleResult', `連接後端失敗: ${error.message}`);
+        }
+    }
+
+    function populateStockSelect(stocks) {
+        const select = document.getElementById('stockCodeSelect');
+        select.innerHTML = '<option value="">請選擇股票代碼...</option>';
+        
+        stocks.forEach(stock => {
+            const option = document.createElement('option');
+            option.value = stock.code || stock;
+            const displayText = stock.dataRows ? 
+                `${stock.code} (${stock.dataRows}行數據)` : 
+                (stock.code || stock);
+            option.textContent = displayText;
+            select.appendChild(option);
+        });
+    }
+
+    function onStockSelectChange() {
+        const select = document.getElementById('stockCodeSelect');
+        if (select.value) {
+            analyzeSingleStock();
+        }
+    }
+
+    async function analyzeSingleStock() {
+        const stockCode = document.getElementById('stockCodeSelect').value;
+        if (!stockCode) {
+            alert('請選擇股票代碼');
+            return;
+        }
+        
+        console.log(`🔍 分析單股: ${stockCode}`);
+        
+        const button = document.getElementById('analyzeButton');
+        button.disabled = true;
+        button.innerHTML = '<span class="loading-spinner"></span> 分析中...';
+        
+        document.getElementById('singleResult').innerHTML = `<div class="loading-overlay"><p>正在分析 ${stockCode}...</p></div>`;
+        document.getElementById('chartContainer').classList.add('hidden');
+
+        try {
+            const response = await ApiService.call('getSingleRegimeScore', { stockCode });
+            button.disabled = false;
+            button.innerHTML = '🔍 開始分析';
+            displaySingleResult(response);
+
+            if (response.success) {
+                await loadAndRenderHistoryChartWithSignals(response.stockCode);
+            }
+        } catch (error) {
+            button.disabled = false;
+            button.innerHTML = '🔍 開始分析';
+            showError('singleResult', `分析失敗: ${error.message}`);
+        }
+    }
+
+    function displaySingleResult(result) {
+        const container = document.getElementById('singleResult');
+        
+        if (!result.success) {
+            showError('singleResult', `分析 ${result.stockCode} 失敗: ${result.error}`);
+            return;
+        }
+        
+        const data = result.data;
+        const scoreClass = getScoreClass(data.totalScore);
+        const scoreColor = getScoreColor(data.totalScore);
+
+        container.innerHTML = `
+            <article style="border: 2px solid ${scoreColor}; border-radius: 0.5rem; padding: 2rem; margin-top: 1rem;">
+                <header style="text-align: center; margin-bottom: 2rem;">
+                    <h2>${result.stockCode} 分析結果</h2>
+                    <div class="score-cell ${scoreClass}" style="font-size: 3rem; padding: 1rem; margin: 1rem auto; display: inline-block;">
+                        ${data.totalScore}
+                    </div>
+                    <h3 style="color: ${scoreColor}; margin: 0.5rem 0;">
+                        ${data.interpretation} 
+                    </h3>
+                </header>
+                
+                <section>
+                    <h4>📊 分數組成：</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 1rem 0;">
+                        <div style="text-align: center; padding: 1rem; background: var(--secondary-background); border-radius: 0.3rem;">
+                            <div style="font-size: 1.5rem; color: ${getScoreColor(data.breakdown.volatility)}; font-weight: bold;">
+                                ${data.breakdown.volatility}
+                            </div>
+                            <div>波動率制度</div>
+                        </div>
+                        <div style="text-align: center; padding: 1rem; background: var(--secondary-background); border-radius: 0.3rem;">
+                            <div style="font-size: 1.5rem; color: ${getScoreColor(data.breakdown.trend)}; font-weight: bold;">
+                                ${data.breakdown.trend}
+                            </div>
+                            <div>趨勢制度</div>
+                        </div>
+                        <div style="text-align: center; padding: 1rem; background: var(--secondary-background); border-radius: 0.3rem;">
+                            <div style="font-size: 1.5rem; color: ${getScoreColor(data.breakdown.momentum)}; font-weight: bold;">
+                                ${data.breakdown.momentum}
+                            </div>
+                            <div>動能制度</div>
+                        </div>
+                    </div>
+                </section>
+                
+                <section style="background: #f8fafc; padding: 1.5rem; border-radius: 0.5rem; margin-top: 1.5rem;">
+                    <h4>💡 投資建議：</h4>
+                    <p style="font-size: 1.1rem; line-height: 1.6;">根據 D-Regime 分數 ${data.totalScore}，目前的市場制度為「${data.interpretation}」。</p>
+                    <p style="margin-top: 1rem;"><small>分析時間：${new Date(result.timestamp).toLocaleString()}</small></p>
+                </section>
+            </article>
+        `;
+    }
+
+    // ==============================================================================
+    // 歷史圖表功能
+    // ==============================================================================
+    async function loadAndRenderHistoryChartWithSignals(stockCode) {
+        console.log(`📈 開始載入 ${stockCode} 的歷史圖表（含信號）`);
+        
+        const chartContainer = document.getElementById('chartContainer');
+        const chartDiv = document.getElementById('historyChart');
+        
+        chartContainer.classList.remove('hidden');
+        chartDiv.innerHTML = `
+            <div class="loading-overlay">
+                <div class="loading-spinner-large"></div>
+                <p>正在生成完整歷史圖表及信號標註...</p>
+            </div>`;
+
+        try {
+            const response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode });
+            console.log("歷史數據響應:", response);
+            
+            if (response.success) {
+                console.log(`✅ 成功獲取 ${response.data.length} 筆歷史數據`);
+                drawChartWithSignals(response.data, stockCode);
+            } else {
+                showError('historyChart', '無法加載歷史圖表數據: ' + response.error);
+            }
+        } catch (error) {
+            console.error("API 調用失敗:", error);
+            showError('historyChart', '請求歷史數據失敗: ' + error.message);
+        }
+    }
+
+    function drawChartWithSignals(data, stockCode) {
+        google.charts.load('current', {'packages':['corechart']});
+        google.charts.setOnLoadCallback(() => {
+            const dataTable = new google.visualization.DataTable();
+            dataTable.addColumn('date', '日期');
+            dataTable.addColumn('number', '收盤價');
+            dataTable.addColumn('number', 'D-Regime 正分');
+            dataTable.addColumn('number', 'D-Regime 負分');
+            dataTable.addColumn({type: 'string', role: 'annotation'});
+            dataTable.addColumn({type: 'string', role: 'annotationText'});
+            
+            const rows = data.map((item, index) => {
+                const score = item.score;
+                let annotation = null;
+                let annotationText = null;
+                
+                if (index > 0 && item.signals && item.signals.length > 0) {
+                    const signalMarks = {
+                        '制度突破': '突',
+                        '動能點火': '火',
+                        '平靜啟航': '航',
+                        '底背離': '底',
+                        '制度崩壞': '崩',
+                        '恐慌加劇': '恐',
+                        '頂背離': '頂'
+                    };
+                    
+                    const firstSignal = item.signals[0];
+                    annotation = signalMarks[firstSignal.name] || '';
+                    annotationText = firstSignal.name;
+                }
+                
+                return [
+                    new Date(item.date),
+                    item.price,
+                    score >= 0 ? score : null,
+                    score < 0 ? score : null,
+                    annotation,
+                    annotationText
+                ];
+            });
+            
+            dataTable.addRows(rows);
+            
+            const options = {
+                title: `${stockCode} 股價 vs D-Regime 分數`,
+                seriesType: 'line',
+                series: {
+                    0: { targetAxisIndex: 0, color: '#3498db', lineWidth: 2 },
+                    1: { targetAxisIndex: 1, type: 'bars', color: '#16a34a' },
+                    2: { targetAxisIndex: 1, type: 'bars', color: '#ef4444' }
+                },
+                vAxes: {
+                    0: { title: '股價 (HKD)', viewWindow: { min: 0 } },
+                    1: { title: 'D-Regime 分數', viewWindow: { min: -5, max: 5 } }
+                },
+                hAxis: { title: '日期', format: 'MM/dd' },
+                legend: { position: 'top' },
+                chartArea: { width: '85%', height: '70%' },
+                backgroundColor: { fill: '#f8f9fa' }
+            };
+            
+            const chart = new google.visualization.ComboChart(document.getElementById('historyChart'));
+            chart.draw(dataTable, options);
+        });
+    }
+
+    // ==============================================================================
+    // 批量分析功能
+    // ==============================================================================
+    async function analyzeBatchStocks() {
+        const input = document.getElementById('batchStockCodes').value.trim();
+        if (!input) {
+            alert('請輸入股票代碼');
+            return;
+        }
+        
+        const stockCodes = input.split('\n').map(code => code.trim()).filter(code => code);
+        if (stockCodes.length === 0) {
+            alert('沒有有效的股票代碼');
+            return;
+        }
+        
+        console.log(`📋 批量分析 ${stockCodes.length} 支股票`);
+        
+        const button = document.getElementById('batchAnalyzeButton');
+        button.disabled = true;
+        button.innerHTML = '<span class="loading-spinner"></span> 分析中...';
+        
+        document.getElementById('batchResult').innerHTML = `
+            <div class="loading-overlay">
+                <div class="loading-spinner-large"></div>
+                <p>正在批量分析 ${stockCodes.length} 支股票...</p>
+            </div>
+        `;
+        
+        try {
+            const results = await Promise.allSettled(
+                stockCodes.map(code => ApiService.call('getSingleRegimeScore', { stockCode: code }))
+            );
+            
+            button.disabled = false;
+            button.innerHTML = '📋 批量分析';
+            displayBatchResults(results, stockCodes);
+        } catch (error) {
+            button.disabled = false;
+            button.innerHTML = '📋 批量分析';
+            showError('batchResult', `批量分析失敗: ${error.message}`);
+        }
+    }
+
+    function displayBatchResults(results, stockCodes) {
+        let html = '<h4>批量分析結果</h4>';
+        let successCount = 0;
+        
+        html += '<table class="dashboard-table"><thead><tr><th>股票代碼</th><th>分數</th><th>狀態</th></tr></thead><tbody>';
+        
+        results.forEach((result, index) => {
+            const stockCode = stockCodes[index];
+            if (result.status === 'fulfilled' && result.value.success) {
+                const data = result.value.data;
+                html += `
+                    <tr>
+                        <td><strong>${stockCode}</strong></td>
+                        <td><div class="score-cell ${getScoreClass(data.totalScore)}">${data.totalScore}</div></td>
+                        <td style="color: #16a34a;">✅ 成功</td>
+                    </tr>
+                `;
+                successCount++;
+            } else {
+                html += `
+                    <tr>
+                        <td><strong>${stockCode}</strong></td>
+                        <td>--</td>
+                        <td style="color: #ef4444;">❌ 失敗</td>
+                    </tr>
+                `;
+            }
+        });
+        
+        html += '</tbody></table>';
+        html += `<p><strong>總結：</strong>成功分析 ${successCount}/${stockCodes.length} 支股票</p>`;
+        
+        document.getElementById('batchResult').innerHTML = html;
+    }
+
+    // ==============================================================================
+    // 系統配置功能
+    // ==============================================================================
+    async function loadSystemConfig() {
+        console.log('⚙️ 加載系統配置...');
+        
+        const container = document.getElementById('configDisplay');
+        container.innerHTML = `
+            <div class="loading-overlay">
+                <div class="loading-spinner-large"></div>
+                <p>正在加載系統配置...</p>
+            </div>
+        `;
+        
+        try {
+            const response = await ApiService.call('getSystemConfigWithDescriptions');
+            if (response.success) {
+                displaySystemConfig(response.data);
+            } else {
+                showError('configDisplay', `加載配置失敗: ${response.error}`);
+            }
+        } catch (error) {
+            showError('configDisplay', `無法連接後端: ${error.message}`);
+        }
+    }
+
+    function displaySystemConfig(configData) {
+        let html = '<div class="config-table-container">';
+        
+        configData.configItems.forEach(category => {
+            html += `
+                <h3 class="config-category-title">${category.category}</h3>
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">參數名稱</th>
+                            <th style="width: 15%;">當前數值</th>
+                            <th style="width: 60%;">說明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            category.items.forEach(item => {
+                html += `
+                    <tr>
+                        <td><strong>${item.name}</strong></td>
+                        <td><span class="config-value">${item.value}</span></td>
+                        <td><span class="config-description">${item.description}</span></td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+        });
+        
+        html += `
+            <div class="system-info">
+                <p><strong>系統版本：</strong>${configData.systemVersion}</p>
+                <p><strong>最後更新：</strong>${new Date(configData.lastUpdated).toLocaleString()}</p>
+            </div>
+        </div>`;
+        
+        document.getElementById('configDisplay').innerHTML = html;
+    }
+
+    // ==============================================================================
+    // 策略掃描儀功能
+    // ==============================================================================
+    async function executeScan() {
+        const ruleName = document.getElementById('scannerRuleSelect').value;
+        if (!ruleName) {
+            alert('請選擇掃描規則');
+            return;
+        }
+        
+        console.log(`📈 開始掃描: ${ruleName}`);
+        
+        const button = document.getElementById('executeScanButton');
+        button.disabled = true;
+        button.innerHTML = '<span class="loading-spinner"></span> 掃描中...';
+        
+        document.getElementById('scannerResults').innerHTML = `
+            <div class="loading-overlay">
+                <div class="loading-spinner-large"></div>
+                <p>正在掃描所有股票，尋找「${ruleName}」信號...</p>
+            </div>
+        `;
+        
+        document.getElementById('scannerSummary').classList.add('hidden');
+        
+        try {
+            const response = await ApiService.call('runScanner', { ruleName });
+            button.disabled = false;
+            button.innerHTML = '🔍 開始掃描';
+            displayScannerResults(response);
+        } catch (error) {
+            button.disabled = false;
+            button.innerHTML = '🔍 開始掃描';
+            showError('scannerResults', `掃描失敗: ${error.message}`);
+        }
+    }
+
+    function displayScannerResults(response) {
+        if (!response.success) {
+            showError('scannerResults', `掃描失敗: ${response.error}`);
+            return;
+        }
+        
+        const { ruleName, resultsCount, totalScanned, executionTime, data } = response;
+        
+        const summaryDiv = document.getElementById('scannerSummary');
+        const statsSpan = document.getElementById('scannerStats');
+        
+        if (resultsCount > 0) {
+            statsSpan.innerHTML = `
+                <strong>✅ 掃描完成！</strong> 
+                在 ${totalScanned} 支股票中找到 <strong style="color: var(--primary-color); font-size: 1.3rem;">${resultsCount}</strong> 個「${ruleName}」信號 
+                (耗時: ${executionTime})
+            `;
+            summaryDiv.classList.remove('hidden');
+        } else {
+            statsSpan.innerHTML = `
+                <strong>ℹ️ 掃描完成</strong> 
+                在 ${totalScanned} 支股票中沒有找到符合「${ruleName}」的信號 
+                (耗時: ${executionTime})
+            `;
+            summaryDiv.classList.remove('hidden');
+        }
+        
+        const resultsDiv = document.getElementById('scannerResults');
+        
+        if (data.length === 0) {
+            resultsDiv.innerHTML = `
+                <div class="scanner-placeholder">
+                    <h4>📭 沒有找到符合條件的股票</h4>
+                    <p>今日市場中沒有股票觸發「${ruleName}」信號。</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let tableHtml = `
+            <table class="scanner-table">
+                <thead>
+                    <tr>
+                        <th>股票代碼</th>
+                        <th>今日分數</th>
+                        <th>昨日分數</th>
+                        <th>變化</th>
+                        <th>信號類型</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        data.forEach(stock => {
+            const scoreChange = stock.todayScore - stock.yesterdayScore;
+            const changeClass = scoreChange > 0 ? 'score-up' : 'score-down';
+            const changeSymbol = scoreChange > 0 ? '↑' : '↓';
+            const signalClass = ['制度突破', '動能點火', '平靜啟航', '底背離'].includes(ruleName) ? 
+                               'signal-bullish' : 'signal-bearish';
+            
+            tableHtml += `
+                <tr onclick="viewStockFromScanner('${stock.stockCode}')" title="點擊查看詳細分析">
+                    <td><strong>${stock.stockCode}</strong></td>
+                    <td>
+                        <div class="score-cell ${getScoreClass(stock.todayScore)}">
+                            ${stock.todayScore}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="score-cell ${getScoreClass(stock.yesterdayScore)}">
+                            ${stock.yesterdayScore}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="score-change ${changeClass}">
+                            ${changeSymbol} ${Math.abs(scoreChange)}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="signal-badge ${signalClass}">
+                            ${ruleName}
+                        </span>
+                    </td>
+                    <td>
+                        <button onclick="event.stopPropagation(); analyzeScannerStock('${stock.stockCode}')" 
+                                style="padding: 0.3rem 0.8rem; font-size: 0.9rem;">
+                            📊 分析
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tableHtml += '</tbody></table>';
+        resultsDiv.innerHTML = tableHtml;
+    }
+
+    function viewStockFromScanner(stockCode) {
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.add('hidden'));
+        
+        const singleTab = document.querySelector('[data-tab="single"]');
+        singleTab.classList.add('active');
+        document.getElementById('singlePanel').classList.remove('hidden');
+        
+        document.getElementById('stockCodeSelect').value = stockCode;
+        analyzeSingleStock();
+    }
+
+    function analyzeScannerStock(stockCode) {
+        viewStockFromScanner(stockCode);
+    }
+
+    // ==============================================================================
+    // 表格排序和篩選
+    // ==============================================================================
+    function setupTableSorting() {
+        document.querySelectorAll('.dashboard-table th.sortable').forEach(header => {
+            header.addEventListener('click', () => sortTableByColumn(header.dataset.column));
+        });
+    }
+
+    function sortTableByColumn(column) {
+        currentSortDirection = (currentSortColumn === column && currentSortDirection === 'desc') ? 'asc' : 'desc';
+        currentSortColumn = column;
+        renderDashboardTable();
+    }
+
+    function sortData() {
+        filteredData.sort((a, b) => {
+            let aVal = getNestedValue(a, currentSortColumn);
+            let bVal = getNestedValue(b, currentSortColumn);
+            
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return currentSortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+            
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            return currentSortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+        });
+    }
+    
+    function applyFilterAndRender() {
+        const filter = document.getElementById('scoreFilter').value;
+        
+        switch(filter) {
+            case 'bullish':
+                filteredData = dashboardData.filter(s => s.totalScore >= 1);
+                break;
+            case 'bearish':
+                filteredData = dashboardData.filter(s => s.totalScore <= -1);
+                break;
+            case 'extreme':
+                filteredData = dashboardData.filter(s => s.totalScore >= 3 || s.totalScore <= -3);
+                break;
+            default:
+                filteredData = [...dashboardData];
+        }
+        
+        renderDashboardTable();
+    }
+
+    function showStockDetail(stockCode) {
+        const stock = dashboardData.find(s => s.stockCode === stockCode);
+        if (!stock) return;
+        
+        const detailHtml = `
+            <h4>📈 ${stockCode} - 詳細分析報告</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0;">
+                <div style="text-align: center;">
+                    <div class="score-cell ${getScoreClass(stock.totalScore)}" style="display: inline-block; font-size: 1.5rem; padding: 1rem;">
+                        ${stock.totalScore}
+                    </div>
+                    <div style="margin-top: 0.5rem; font-weight: bold;">${stock.interpretation}</div>
+                </div>
+                <div>
+                    <h5>組成分數：</h5>
+                    <ul>
+                        <li><strong>波動率：</strong> <span style="color: ${getScoreColor(stock.breakdown.volatility)}">${stock.breakdown.volatility}</span></li>
+                        <li><strong>趨勢：</strong> <span style="color: ${getScoreColor(stock.breakdown.trend)}">${stock.breakdown.trend}</span></li>
+                        <li><strong>動能：</strong> <span style="color: ${getScoreColor(stock.breakdown.momentum)}">${stock.breakdown.momentum}</span></li>
+                    </ul>
+                </div>
+            </div>
+            <div style="background: #f8fafc; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
+                <h5>📋 投資建議：</h5>
+                <p>根據 D-Regime 分數 ${stock.totalScore}，目前的市場制度為「${stock.interpretation}」。</p>
+                <p><small>分析時間：${new Date(stock.timestamp).toLocaleString()}</small></p>
+            </div>
+            <button onclick="document.getElementById('stockDetailSection').classList.add('hidden')" style="margin-top: 1rem;">關閉詳細分析</button>
+        `;
+        
+        document.getElementById('stockDetail').innerHTML = detailHtml;
+        const section = document.getElementById('stockDetailSection');
+        section.classList.remove('hidden');
+        section.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function updateSortIndicators() {
+        document.querySelectorAll('.dashboard-table th').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+        });
+        
+        const currentHeader = document.querySelector(`[data-column="${currentSortColumn}"]`);
+        if (currentHeader) {
+            currentHeader.classList.add(currentSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    }
+
+    // ==============================================================================
+    // 緩存管理
+    // ==============================================================================
+    function setDashboardLoading(isLoading) {
+        const button = document.getElementById('refreshDashboard');
+        button.disabled = isLoading;
+        button.innerHTML = isLoading ? '<span class="loading-spinner"></span> 分析中...' : '🔄 刷新數據';
+    }
+
+    function updateRefreshInfo(response) {
+        const info = document.getElementById('refreshInfo');
+        if (response.timestamp) {
+            const refreshTime = new Date(response.timestamp).toLocaleString();
+            const summary = response.summary;
+            const cacheStatus = response.fromCache ? '（緩存）' : '（實時）';
+            info.innerHTML = `
+                <span>最後刷新: ${refreshTime} ${cacheStatus}</span>
+                <span>成功: ${summary.successful}/${summary.totalStocks} | 耗時: ${summary.executionTime}</span>
+            `;
+            info.classList.remove('hidden');
+        }
+    }
+
+    async function forceClearCache() {
+        if (!confirm('⚠️ 確定要清除緩存嗎？這將強制重新分析所有股票，可能需要較長時間。')) return;
+        
+        // 清除本地緩存
+        LocalCache.clear();
+        
+        setDashboardLoading(true);
+        try {
+            const response = await ApiService.call('clearDashboardCache');
+            if (response.success) {
+                console.log('✅ 緩存已清除');
+                await loadDashboard(false);
+            } else {
+                alert('清除緩存失敗: ' + response.error);
+                setDashboardLoading(false);
+            }
+        } catch (error) {
+            alert('清除緩存失敗: ' + error.message);
+            setDashboardLoading(false);
+        }
+    }
+
+    // ==============================================================================
+    // 通用輔助函數
+    // ==============================================================================
+    function setupTabs() {
+        const buttons = document.querySelectorAll('.tab-button');
+        const panels = document.querySelectorAll('.tab-panel');
+        
+        buttons.forEach(button => {
+            button.addEventListener('click', e => {
+                e.preventDefault();
+                
+                buttons.forEach(btn => btn.classList.remove('active'));
+                panels.forEach(panel => panel.classList.add('hidden'));
+                
+                button.classList.add('active');
+                const targetPanel = document.getElementById(button.dataset.tab + 'Panel');
+                targetPanel.classList.remove('hidden');
+                
+                if (button.dataset.tab === 'config') {
+                    const configDisplay = document.getElementById('configDisplay');
+                    if (configDisplay.innerHTML.includes('loading-spinner-large')) {
+                        loadSystemConfig();
+                    }
+                }
+            });
+        });
+    }
+    
+    function showError(containerId, message) { 
+        document.getElementById(containerId).innerHTML = `<div class="error-message">❌ ${message}</div>`; 
+    }
+    
+    function getScoreColor(score) { 
+        if (score > 0) return '#22c55e'; 
+        if (score < 0) return '#ef4444'; 
+        return '#6b7280'; 
+    }
+    
+    function getScoreClass(score) { 
+        if (score >= 3) return 'score-strong-bullish'; 
+        if (score >= 1) return 'score-moderate-bullish'; 
+        if (score > -1) return 'score-neutral'; 
+        if (score > -3) return 'score-moderate-bearish'; 
+        return 'score-strong-bearish'; 
+    }
+    
+    function getNestedValue(obj, path) { 
+        return path.split('.').reduce((current, key) => current && current[key], obj); 
+    }
+
+    // ==============================================================================
+    // 程式入口 - 自動初始化
+    // ==============================================================================
+    console.log('D-Regime V2.8 GitHub Pages 版本已加載完成');
+    </script>
+</body>
+</html>
