@@ -153,6 +153,16 @@
                 <div id="singleResult"></div>
                 <div id="chartContainer" class="hidden chart-container">
                     <h3 class="chart-title">歷史回測圖表</h3>
+                    <div class="history-controls" style="display:flex; gap:0.75rem; align-items:center; margin-bottom:0.5rem;">
+                        <label for="historyRangeSelect" style="margin:0;">範圍:</label>
+                        <select id="historyRangeSelect" style="max-width: 160px;">
+                            <option value="120">120 天</option>
+                            <option value="240">240 天</option>
+                            <option value="365">365 天</option>
+                            <option value="720" selected>720 天</option>
+                        </select>
+                        <small style="color: var(--muted-color);">較長範圍可能會較慢</small>
+                    </div>
                     <div id="historyChart" style="width: 100%; height: 500px; border: 1px solid var(--border-color); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
                         <div class="loading-overlay">
                             <div class="loading-spinner-large"></div>
@@ -397,6 +407,7 @@
     // ==============================================================================
     let dashboardData = [], filteredData = [], currentSortColumn = 'totalScore', currentSortDirection = 'desc';
     let availableStocks = [];
+    let currentChartStockCode = '';
 
     // ==============================================================================
     // 初始化
@@ -404,6 +415,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
         console.log('🚀 D-Regime V2.8 GitHub Pages 版本初始化');
         setupTabs();
+        initHistoryRangeControl();
         await testConnection();
         await loadAvailableStocks();
         await loadSystemConfig();
@@ -729,6 +741,8 @@
         
         const chartContainer = document.getElementById('chartContainer');
         const chartDiv = document.getElementById('historyChart');
+        const rangeSelect = document.getElementById('historyRangeSelect');
+        const selectedRange = parseInt(rangeSelect?.value || HISTORY_DEFAULT_DAYS, 10);
         
         chartContainer.classList.remove('hidden');
         chartDiv.innerHTML = `
@@ -739,12 +753,23 @@
 
         try {
             // Try initial request; on "parameter too large" fallback to shorter ranges
-            let response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: HISTORY_DEFAULT_DAYS });
+            let response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: selectedRange });
             if (!response.success && /參數太大|parameter too large/i.test(response.error || '')) {
                 for (const d of HISTORY_FALLBACKS) {
                     console.warn(`History too large, retrying with rangeDays=${d}`);
                     response = await ApiService.call('getHistoricalRegimeScoresWithSignals', { stockCode, rangeDays: d, noCache: '1' });
                     if (response.success) break;
+                }
+            }
+            // If still failing due to Apps Script size limits, fall back to non-signal endpoint
+            if (!response.success && /參數太大|parameter too large/i.test(response.error || '')) {
+                console.warn('Falling back to non-signal history endpoint due to parameter-too-large');
+                response = await ApiService.call('getHistoricalRegimeScores', { stockCode, rangeDays: selectedRange, noCache: '1' });
+                if (!response.success) {
+                    for (const d of HISTORY_FALLBACKS) {
+                        response = await ApiService.call('getHistoricalRegimeScores', { stockCode, rangeDays: d, noCache: '1' });
+                        if (response.success) break;
+                    }
                 }
             }
             console.log("歷史數據響應:", response);
@@ -760,6 +785,16 @@
             showError('historyChart', '請求歷史數據失敗: ' + error.message);
         }
     }
+
+    // 當使用者更改歷史區間時，若已選擇股票則重新載入圖表
+    (function setupHistoryRangeHandler(){
+        const sel = document.getElementById('historyRangeSelect');
+        if (!sel) return;
+        sel.addEventListener('change', () => {
+            const code = document.getElementById('stockCodeSelect')?.value;
+            if (code) loadAndRenderHistoryChartWithSignals(code);
+        });
+    })();
 
     function thinHistoryData(data, maxPoints = 1200) {
         if (!Array.isArray(data)) return data;
